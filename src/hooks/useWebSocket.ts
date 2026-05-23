@@ -1,8 +1,8 @@
 ﻿// src/hooks/useWebSocket.ts
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RawMetrics } from "../types/posture";
+import type { PostureSettings, RawMetrics } from "../types/posture";
 
-export const useWebSocket = (url: string = "ws://localhost:8765") => {
+export const useWebSocket = (url: string = "ws://localhost:8765/ws") => {
   const [connected, setConnected] = useState<boolean>(false);
   const [metrics, setMetrics] = useState<RawMetrics | null>(null);
 
@@ -72,9 +72,9 @@ export const useWebSocket = (url: string = "ws://localhost:8765") => {
     };
   }, [connect]);
 
-  const sendAction = useCallback((action: string) => {
+  const sendAction = useCallback((action: string, payload: Record<string, unknown> = {}) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ action }));
+      socketRef.current.send(JSON.stringify({ action, ...payload }));
     } else {
       console.warn("Cannot send action; backend is not connected:", action);
     }
@@ -97,6 +97,25 @@ export const useWebSocket = (url: string = "ws://localhost:8765") => {
     sendAction("endSessionStream");
   }, [sendAction]);
 
+  const updateBackendSettings = useCallback((settings: PostureSettings) => {
+    sendAction("updateSettings", {
+      settings: {
+        sound_alerts_enabled: settings.sound_alerts_enabled,
+        alert_cooldown_sec: settings.alert_cooldown_sec,
+        pitch_threshold_deg: settings.pitch_threshold_deg,
+        distance_threshold_ratio: settings.distance_threshold_ratio,
+        ear_threshold: settings.ear_threshold,
+        break_interval_min: settings.break_interval_min,
+      },
+    });
+  }, [sendAction]);
+
+  const sendFrame = useCallback((image: string) => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ type: "frame", image }));
+    }
+  }, []);
+
   return {
     connected,
     metrics,
@@ -104,6 +123,8 @@ export const useWebSocket = (url: string = "ws://localhost:8765") => {
     pauseStream,
     resumeStream,
     endSessionStream,
+    updateBackendSettings,
+    sendFrame,
     reconnect: connect,
   };
 };

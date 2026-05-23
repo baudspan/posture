@@ -1,5 +1,5 @@
 // src/pages/Monitor.tsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Play, Pause, Square } from "lucide-react";
 import { useAuth } from "../store/authStore";
 import { useSettings } from "../hooks/useSettings";
@@ -29,7 +29,9 @@ export const Monitor: React.FC = () => {
     startCalibration,
     pauseStream,
     resumeStream,
-    endSessionStream
+    endSessionStream,
+    updateBackendSettings,
+    sendFrame
   } = useWebSocketContext();
 
   // 2. Posture Score Hook (local calculations from metrics + settings)
@@ -40,6 +42,12 @@ export const Monitor: React.FC = () => {
   
   const [streamPaused, setStreamPaused] = useState<boolean>(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (connected) {
+      updateBackendSettings(settings);
+    }
+  }, [connected, settings, updateBackendSettings]);
 
   const handleStartSession = () => {
     startSession();
@@ -115,6 +123,7 @@ export const Monitor: React.FC = () => {
               metrics={metrics}
               showSkeleton={settings.show_skeleton_overlay}
               activeIssues={activeIssues}
+              onFrame={connected && !streamPaused ? sendFrame : undefined}
             />
           </div>
         </div>
@@ -130,7 +139,7 @@ export const Monitor: React.FC = () => {
               <div className="flex flex-col gap-4 shrink-0">
                 <SessionTimer durationSeconds={duration} isActive={sessionActive} />
                 <DistanceBadge
-                  status={metrics?.face_detected ? metrics.distance_status : "GOOD"}
+                  status={metrics?.distance_status || "TOO_FAR"}
                   faceWidthRatio={metrics?.face_width_ratio || 0}
                 />
                 <CalibrationRing

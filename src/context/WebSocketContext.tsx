@@ -1,7 +1,7 @@
 // src/context/WebSocketContext.tsx
 import React, { createContext, useContext } from "react";
 import { useWebSocket as useRawWebSocket } from "../hooks/useWebSocket";
-import type { RawMetrics } from "../types/posture";
+import type { PostureSettings, RawMetrics } from "../types/posture";
 
 interface WebSocketContextType {
   connected: boolean;
@@ -10,6 +10,8 @@ interface WebSocketContextType {
   pauseStream: () => void;
   resumeStream: () => void;
   endSessionStream: () => void;
+  updateBackendSettings: (settings: PostureSettings) => void;
+  sendFrame: (image: string) => void;
   reconnect: () => void;
 }
 

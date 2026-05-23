@@ -8,12 +8,14 @@ interface WebcamCanvasProps {
   metrics: RawMetrics | null;
   showSkeleton: boolean;
   activeIssues: string[];
+  onFrame?: (image: string) => void;
 }
 
 export const WebcamCanvas: React.FC<WebcamCanvasProps> = ({
   metrics,
   showSkeleton,
-  activeIssues
+  activeIssues,
+  onFrame
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -21,6 +23,7 @@ export const WebcamCanvas: React.FC<WebcamCanvasProps> = ({
   const [streamError, setStreamError] = useState<string | null>(null);
   const animationRef = useRef<number | null>(null);
   const localFrameIndex = useRef<number>(0);
+  const lastFrameSentAt = useRef<number>(0);
 
   // Initialize camera stream
   useEffect(() => {
@@ -68,6 +71,18 @@ export const WebcamCanvas: React.FC<WebcamCanvasProps> = ({
       if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
         canvas.width = video.clientWidth;
         canvas.height = video.clientHeight;
+      }
+
+      if (onFrame && video.videoWidth > 0 && performance.now() - lastFrameSentAt.current > 300) {
+        const capture = document.createElement("canvas");
+        capture.width = 320;
+        capture.height = 240;
+        const captureCtx = capture.getContext("2d");
+        if (captureCtx) {
+          captureCtx.drawImage(video, 0, 0, capture.width, capture.height);
+          onFrame(capture.toDataURL("image/jpeg", 0.65));
+          lastFrameSentAt.current = performance.now();
+        }
       }
 
       // Clear previous frames
@@ -170,7 +185,7 @@ export const WebcamCanvas: React.FC<WebcamCanvasProps> = ({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [metrics, showSkeleton, streamActive, activeIssues]);
+  }, [metrics, showSkeleton, streamActive, activeIssues, onFrame]);
 
   return (
     <div className="relative w-full h-full min-h-0 bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl flex items-center justify-center group transition-colors duration-300">
