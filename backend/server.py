@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -14,6 +15,11 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from eyestrain_ml import EyeStrainAnalyzer
+
+try:
+    import winsound
+except ImportError:
+    winsound = None
 
 
 app = FastAPI(title="Posture Guard Backend")
@@ -37,6 +43,26 @@ SKELETON_EDGES = [
     [12, 24],
     [23, 24],
 ]
+
+ALERT_COOLDOWN_SEC = 5
+ALERT_TONES = {
+    "posture": (880, 300),
+    "distance": (880, 300),
+    "blink": (440, 200),
+    "break": (660, 500),
+}
+
+
+def play_beep(alert_type="posture"):
+    frequency, duration_ms = ALERT_TONES.get(alert_type, ALERT_TONES["posture"])
+
+    def _play():
+        if winsound is not None:
+            winsound.Beep(frequency, duration_ms)
+        else:
+            print("\a", end="", flush=True)
+
+    threading.Thread(target=_play, daemon=True).start()
 
 
 class BlinkTracker:
@@ -94,6 +120,13 @@ class PostureBackend:
         self.calibrating = False
         self.calibration_started_at = 0
         self.paused = False
+        self.sound_alerts_enabled = True
+        self.last_alert_at = {
+            "posture": 0,
+            "distance": 0,
+            "blink": 0,
+            "break": 0,
+        }
 
     def handle_action(self, action):
         if action == "start_calibration":
@@ -105,6 +138,17 @@ class PostureBackend:
             self.paused = False
         elif action == "end_session":
             self.__init__()
+
+    def maybe_beep(self, alert_type):
+        if not self.sound_alerts_enabled:
+            return
+
+        now = time.time()
+        if now - self.last_alert_at.get(alert_type, 0) < ALERT_COOLDOWN_SEC:
+            return
+
+        self.last_alert_at[alert_type] = now
+        play_beep(alert_type)
 
     def pose_metrics(self, frame):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -182,8 +226,10 @@ class PostureBackend:
 
         if face["head_pitch_deg"] > 30:
             active_issues.append("Slouching")
+            self.maybe_beep("posture")
         if face["face_width_ratio"] > 0.4:
             active_issues.append("Too close to screen")
+            self.maybe_beep("distance")
 
         face_width_ratio = round(float(face["face_width_ratio"]), 3)
         if face_width_ratio >= 0.4:
@@ -196,6 +242,11 @@ class PostureBackend:
         calibration_status, calibration_progress = self.calibration_state()
         elapsed = int(time.time() - self.started_at)
         break_countdown = max(0, self.break_interval_sec - elapsed % self.break_interval_sec)
+
+        if self.blinks.status() == "Very Low" and elapsed > 30:
+            self.maybe_beep("blink")
+        if break_countdown <= 1:
+            self.maybe_beep("break")
 
         left_ear = round(float(face["left_ear"]), 3)
         right_ear = round(float(face["right_ear"]), 3)
