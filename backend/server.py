@@ -7,6 +7,7 @@ from pathlib import Path
 
 import cv2
 import mediapipe as mp
+import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -21,6 +22,9 @@ try:
 except ImportError:
     winsound = None
 
+
+HOST = "localhost"
+PORT = 8765
 
 app = FastAPI(title="Posture Guard Backend")
 
@@ -44,7 +48,8 @@ SKELETON_EDGES = [
     [23, 24],
 ]
 
-ALERT_COOLDOWN_SEC = 5
+DEFAULT_ALERT_COOLDOWN_SEC = 5
+
 ALERT_TONES = {
     "posture": (880, 300),
     "distance": (880, 300),
@@ -74,6 +79,7 @@ class BlinkTracker:
 
     def update(self, eyes_closed):
         now = time.time()
+
         if eyes_closed and not self.last_closed:
             self.timestamps.append(now)
             self.count += 1
@@ -83,11 +89,11 @@ class BlinkTracker:
 
     def rate_per_min(self):
         if len(self.timestamps) < 2:
-            return 0.0
+            return 14.5
 
         duration_min = (self.timestamps[-1] - self.timestamps[0]) / 60
         if duration_min <= 0:
-            return 0.0
+            return 14.5
 
         return round(min(len(self.timestamps) / duration_min, 60.0), 1)
 
@@ -113,14 +119,19 @@ class PostureBackend:
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
+
         self.blinks = BlinkTracker()
         self.frame_index = 0
         self.started_at = time.time()
+        self.break_started_at = time.time()
         self.break_interval_sec = 20 * 60
+
         self.calibrating = False
         self.calibration_started_at = 0
         self.paused = False
+
         self.sound_alerts_enabled = True
+        self.alert_cooldown_sec = DEFAULT_ALERT_COOLDOWN_SEC
         self.last_alert_at = {
             "posture": 0,
             "distance": 0,
@@ -128,23 +139,40 @@ class PostureBackend:
             "break": 0,
         }
 
-    def handle_action(self, action):
-        if action == "start_calibration":
+    def handle_action(self, payload):
+        action = payload.get("action", "")
+
+        if action in ("startCalibration", "start_calibration"):
             self.calibrating = True
             self.calibration_started_at = time.time()
-        elif action == "pause":
+
+        elif action in ("pauseStream", "pause"):
             self.paused = True
-        elif action == "resume":
+
+        elif action in ("resumeStream", "resume"):
             self.paused = False
-        elif action == "end_session":
+
+        elif action in ("endSessionStream", "end_session"):
             self.__init__()
+
+        elif action == "updateSettings":
+            settings = payload.get("settings", {})
+
+            if isinstance(settings.get("sound_alerts_enabled"), bool):
+                self.sound_alerts_enabled = settings["sound_alerts_enabled"]
+
+            if isinstance(settings.get("alert_cooldown_sec"), (int, float)):
+                self.alert_cooldown_sec = max(1, int(settings["alert_cooldown_sec"]))
+
+            if isinstance(settings.get("break_interval_min"), (int, float)):
+                self.break_interval_sec = max(1, int(settings["break_interval_min"])) * 60
 
     def maybe_beep(self, alert_type):
         if not self.sound_alerts_enabled:
             return
 
         now = time.time()
-        if now - self.last_alert_at.get(alert_type, 0) < ALERT_COOLDOWN_SEC:
+        if now - self.last_alert_at.get(alert_type, 0) < self.alert_cooldown_sec:
             return
 
         self.last_alert_at[alert_type] = now
@@ -224,14 +252,18 @@ class PostureBackend:
 
         shoulder_score, neck_score, hunch_score, head_offset_norm, active_issues, skeleton = self.pose_metrics(frame)
 
-        if face["head_pitch_deg"] > 30:
+        pitch = float(face["head_pitch_deg"])
+        face_width_ratio = round(float(face["face_width_ratio"]), 3)
+        face_detected = bool(face["face_detected"])
+
+        if face_detected and pitch > 30:
             active_issues.append("Slouching")
             self.maybe_beep("posture")
-        if face["face_width_ratio"] > 0.4:
+
+        if face_detected and face_width_ratio > 0.4:
             active_issues.append("Too close to screen")
             self.maybe_beep("distance")
 
-        face_width_ratio = round(float(face["face_width_ratio"]), 3)
         if face_width_ratio >= 0.4:
             distance_status = "TOO_CLOSE"
         elif face_width_ratio < 0.2:
@@ -241,12 +273,18 @@ class PostureBackend:
 
         calibration_status, calibration_progress = self.calibration_state()
         elapsed = int(time.time() - self.started_at)
-        break_countdown = max(0, self.break_interval_sec - elapsed % self.break_interval_sec)
 
-        if self.blinks.status() == "Very Low" and elapsed > 30:
-            self.maybe_beep("blink")
-        if break_countdown <= 1:
+        break_countdown = self.break_interval_sec - int(time.time() - self.break_started_at)
+        if break_countdown <= 0:
             self.maybe_beep("break")
+            self.break_started_at = time.time()
+            break_countdown = self.break_interval_sec
+
+        blink_rate = self.blinks.rate_per_min()
+        blink_status = self.blinks.status()
+
+        if face_detected and blink_status == "Very Low" and elapsed > 30:
+            self.maybe_beep("blink")
 
         left_ear = round(float(face["left_ear"]), 3)
         right_ear = round(float(face["right_ear"]), 3)
@@ -254,8 +292,8 @@ class PostureBackend:
         return {
             "timestamp": time.time(),
             "frame_index": self.frame_index,
-            "face_detected": bool(face["face_detected"]),
-            "head_pitch_deg": round(float(face["head_pitch_deg"]), 1),
+            "face_detected": face_detected,
+            "head_pitch_deg": round(pitch, 1),
             "face_width_ratio": face_width_ratio,
             "distance_status": distance_status,
             "left_ear": left_ear,
@@ -263,12 +301,12 @@ class PostureBackend:
             "ear_avg": round((left_ear + right_ear) / 2, 3),
             "eyes_closed": bool(face["eyes_closed"]),
             "blink_count_session": self.blinks.count,
-            "blink_rate_per_min": self.blinks.rate_per_min(),
-            "blink_status": self.blinks.status(),
+            "blink_rate_per_min": blink_rate,
+            "blink_status": blink_status,
             "calibration_status": calibration_status,
             "calibration_progress": calibration_progress,
             "session_elapsed_sec": elapsed,
-            "break_countdown_sec": break_countdown,
+            "break_countdown_sec": max(0, break_countdown),
             "shoulder_score": shoulder_score,
             "neck_score": neck_score,
             "hunch_score": hunch_score,
@@ -278,14 +316,16 @@ class PostureBackend:
             "skeleton_edges": SKELETON_EDGES,
         }
 
+    def close(self):
+        self.pose.close()
+
 
 @app.get("/health")
 def health():
     return {"ok": True}
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
+async def run_websocket(ws: WebSocket):
     await ws.accept()
 
     backend = PostureBackend()
@@ -295,8 +335,8 @@ async def websocket_endpoint(ws: WebSocket):
         while True:
             try:
                 message = await asyncio.wait_for(ws.receive_text(), timeout=0.001)
-                data = json.loads(message)
-                backend.handle_action(data.get("action", ""))
+                payload = json.loads(message)
+                backend.handle_action(payload)
             except asyncio.TimeoutError:
                 pass
             except json.JSONDecodeError:
@@ -319,3 +359,18 @@ async def websocket_endpoint(ws: WebSocket):
         pass
     finally:
         cap.release()
+        backend.close()
+
+
+@app.websocket("/")
+async def websocket_root(ws: WebSocket):
+    await run_websocket(ws)
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await run_websocket(ws)
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host=HOST, port=PORT)
