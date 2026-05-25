@@ -5,6 +5,7 @@ import { WebSocketProvider, useWebSocketContext } from "./context/WebSocketConte
 import { SettingsProvider } from "./context/SettingsContext";
 import { Sidebar } from "./components/layout/Sidebar";
 import { TopBar } from "./components/layout/TopBar";
+import { BottomNav } from "./components/layout/BottomNav";
 
 // Pages
 import { Login } from "./pages/Login";
@@ -13,11 +14,6 @@ import { History } from "./pages/History";
 import { Analytics } from "./pages/Analytics";
 import { Settings } from "./pages/Settings";
 
-/**
- * Bridges auth state → backend pause/resume.
- * Uses setOnOpenCallback so resume is sent even if the socket
- * isn't open yet when auth resolves (race condition fix).
- */
 const AuthSync: React.FC = () => {
   const { isAuthenticated, loading } = useAuth();
   const { pauseStream, resumeStream, sendSettings, setOnOpenCallback, setAuthenticated } = useWebSocketContext();
@@ -27,15 +23,10 @@ const AuthSync: React.FC = () => {
     if (loading) return;
     if (prevAuth.current === isAuthenticated) return;
     prevAuth.current = isAuthenticated;
-
     setAuthenticated(isAuthenticated);
-
     if (isAuthenticated) {
-      // Queue resume + settings flush so both fire the instant socket is open
       setOnOpenCallback(() => {
         resumeStream();
-        // Read saved settings from localStorage directly (SettingsProvider may not
-        // be mounted yet at this point — it's inside the auth gate)
         try {
           const raw = localStorage.getItem("posture_settings");
           const saved = raw ? JSON.parse(raw) : {};
@@ -44,14 +35,12 @@ const AuthSync: React.FC = () => {
             sound_alerts_enabled:  saved.sound_alerts_enabled  ?? true,
             show_skeleton_overlay: saved.show_skeleton_overlay ?? true,
           });
-          console.log("[AuthSync] logged in → resume + settings sent", saved);
         } catch {
           sendSettings({ alert_cooldown_sec: 5, sound_alerts_enabled: true, show_skeleton_overlay: true });
         }
       });
     } else {
       pauseStream();
-      console.log("[AuthSync] logged out → pause sent");
     }
   }, [isAuthenticated, loading, pauseStream, resumeStream, sendSettings, setOnOpenCallback, setAuthenticated]);
 
@@ -84,22 +73,36 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300">
-      <Sidebar
-        currentPage={currentPage}
-        setCurrentPage={setCurrentPage}
-        isExpanded={sidebarExpanded}
-        onToggleSidebar={toggleSidebar}
-      />
+    <div className="flex h-[100dvh] w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-300">
+      {/* Sidebar — hidden on mobile, visible md+ */}
+      <div className="hidden md:flex">
+        <Sidebar
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          isExpanded={sidebarExpanded}
+          onToggleSidebar={toggleSidebar}
+        />
+      </div>
+
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar
           currentPage={currentPage}
           connected={connected}
           breakCountdownSec={metrics?.break_countdown_sec}
         />
-        <main className={`flex-1 min-h-0 ${currentPage === "monitor" ? "overflow-hidden p-6 flex flex-col" : "overflow-y-auto p-8"}`}>
+        {/* Extra bottom padding on mobile so content clears the bottom nav */}
+        <main className={`flex-1 min-h-0 pb-16 md:pb-0 ${
+          currentPage === "monitor"
+            ? "overflow-hidden p-3 md:p-6 flex flex-col"
+            : "overflow-y-auto p-4 md:p-8"
+        }`}>
           {renderPage()}
         </main>
+      </div>
+
+      {/* Bottom nav — mobile only */}
+      <div className="md:hidden">
+        <BottomNav currentPage={currentPage} setCurrentPage={setCurrentPage} />
       </div>
     </div>
   );
@@ -118,7 +121,6 @@ const AppContent: React.FC = () => {
 
   return (
     <>
-      {/* Always mounted so AuthSync can always send pause/resume */}
       <AuthSync />
       {isAuthenticated ? (
         <SettingsProvider>
@@ -134,8 +136,6 @@ const AppContent: React.FC = () => {
 export default function App() {
   return (
     <AuthProvider>
-      {/* WebSocketProvider lives outside auth gate so the socket
-          stays alive and AuthSync can message the backend on logout */}
       <WebSocketProvider>
         <AppContent />
       </WebSocketProvider>

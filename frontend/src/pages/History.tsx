@@ -49,10 +49,10 @@ export const History: React.FC = () => {
   );
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 items-start">
       {/* LEFT: Session Table */}
       <div className={`${selectedSession ? "lg:col-span-7" : "lg:col-span-12"} space-y-4`}>
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl">
           <div className="flex justify-between items-center mb-4">
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-slate-50 leading-none">Tracking Logs</h2>

@@ -193,7 +193,7 @@ export const Analytics: React.FC = () => {
   return (
     <div className="space-y-6 select-none">
       {/* Time Range Selector & Page Title info */}
-      <div className="flex justify-between items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-xl">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 md:p-5 rounded-2xl shadow-xl">
         <div>
           <h2 className="text-base font-bold text-slate-900 dark:text-slate-50 leading-none">Diagnostic Analytics</h2>
           <p className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-1">Detailed statistical reports on posture habits and eye wellness.</p>
@@ -279,7 +279,7 @@ export const Analytics: React.FC = () => {
         {/* Trend Graph - Line chart (Spans 8 cols) */}
         <div className="lg:col-span-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl">
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50 mb-6">Daily Posture Score Trend</h3>
-          <div className="h-72 w-full">
+          <div className="h-48 md:h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData}>
                 <CartesianGrid stroke={theme === "dark" ? "#1e293b" : "#e2e8f0"} strokeDasharray="3 3" />
@@ -356,7 +356,7 @@ export const Analytics: React.FC = () => {
         {/* Issue Frequency - Bar Chart (Spans 6 cols) */}
         <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl">
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50 mb-6">Ergonomic Issues Volume</h3>
-          <div className="h-64 w-full">
+          <div className="h-48 md:h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={issueFrequencyData}>
                 <CartesianGrid stroke={theme === "dark" ? "#1e293b" : "#e2e8f0"} strokeDasharray="3 3" />
@@ -383,7 +383,7 @@ export const Analytics: React.FC = () => {
         {/* Blink rate graph - Line/Area chart (Spans 6 cols) */}
         <div className="lg:col-span-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl">
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50 mb-6">Blink Rate per Session (Eye Strain Index)</h3>
-          <div className="h-64 w-full">
+          <div className="h-48 md:h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData}>
                 <CartesianGrid stroke={theme === "dark" ? "#1e293b" : "#e2e8f0"} strokeDasharray="3 3" />
