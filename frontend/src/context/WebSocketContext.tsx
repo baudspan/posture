@@ -13,9 +13,14 @@ interface WebSocketContextType {
   endSessionStream:  () => void;
   reconnect:         () => void;
   sendSettings: (s: {
-    alert_cooldown_sec:    number;
-    sound_alerts_enabled:  boolean;
-    show_skeleton_overlay: boolean;
+    alert_cooldown_sec:        number;
+    sound_alerts_enabled:      boolean;
+    show_skeleton_overlay:     boolean;
+    pitch_threshold_deg?:      number;
+    roll_threshold_deg?:       number;
+    ear_threshold?:            number;
+    distance_threshold_ratio?: number;
+    break_interval_min?:       number;
   }) => void;
   setOnOpenCallback: (fn: () => void) => void;
   setAuthenticated:  (val: boolean) => void;
