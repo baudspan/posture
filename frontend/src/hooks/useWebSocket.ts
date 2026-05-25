@@ -28,11 +28,35 @@ function getAudioCtx(): AudioContext {
   return _audioCtx;
 }
 
-function playBeep(freq: number, duration: number, volume = 0.4) {
+// Keepalive: plays a silent buffer on a loop so the AudioContext is never
+// garbage-collected or throttled when the tab loses focus. Browsers suspend
+// audio on hidden tabs, but an active source node prevents that.
+let _keepaliveStarted = false;
+function startAudioKeepalive(ctx: AudioContext) {
+  if (_keepaliveStarted) return;
+  _keepaliveStarted = true;
+
+  // 1-frame silent buffer, looped forever
+  const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop   = true;
+  src.connect(ctx.destination);
+  src.start(0);
+
+  // Re-resume whenever the page becomes visible again (some browsers
+  // re-suspend after a tab switch even with an active source)
+  document.addEventListener("visibilitychange", () => {
+    if (ctx.state === "suspended") ctx.resume();
+  });
+}
+
+function playBeep(freq: number, duration: number, volume = 1.0) {
   try {
     const ctx = getAudioCtx();
-    // Resume suspended context (browsers require user gesture first)
     if (ctx.state === "suspended") ctx.resume();
+    startAudioKeepalive(ctx);          // ensure keepalive is running
+
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -47,10 +71,10 @@ function playBeep(freq: number, duration: number, volume = 0.4) {
   }
 }
 
-// Beep presets matching original pygame sounds
-const beepAlert    = () => playBeep(880, 0.3); // posture / distance
-const beepBlink    = () => playBeep(440, 0.2); // blink rate
-const beepBreak    = () => playBeep(660, 0.5); // break reminder
+// Beep presets — volume raised to 1.0 (was 0.4)
+const beepAlert = () => playBeep(880, 0.35, 1.0); // posture / distance
+const beepBlink = () => playBeep(440, 0.25, 1.0); // blink rate
+const beepBreak = () => playBeep(660, 0.55, 1.0); // break reminder
 
 
 export const useWebSocket = (_url: string = WS_URL) => {

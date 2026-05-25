@@ -7,8 +7,10 @@ import React, { useEffect, useRef, useState } from "react";
 import { Camera, CameraOff } from "lucide-react";
 import type { RawMetrics } from "../../types/posture";
 
-const FRAME_INTERVAL_MS = 80;   // ~12 fps to backend
-const JPEG_QUALITY      = 0.65;
+const FRAME_INTERVAL_MS = 40;   // ~25 fps to backend (was 80 ms / ~12 fps)
+const JPEG_QUALITY      = 0.5;  // lower quality = smaller payload = less latency
+const CAPTURE_W         = 480;  // send smaller frame to backend (was full 640×480)
+const CAPTURE_H         = 360;
 
 interface WebcamCanvasProps {
   metrics:      RawMetrics | null;
@@ -170,14 +172,14 @@ export const WebcamCanvas: React.FC<WebcamCanvasProps> = ({
       if (!pausedRef.current && now - lastSendRef.current >= FRAME_INTERVAL_MS) {
         lastSendRef.current = now;
         const cap = captureRef.current;
-        if (cap.width !== W || cap.height !== H) {
-          cap.width  = W;
-          cap.height = H;
+        if (cap.width !== CAPTURE_W || cap.height !== CAPTURE_H) {
+          cap.width  = CAPTURE_W;
+          cap.height = CAPTURE_H;
         }
         const capCtx = cap.getContext("2d");
         if (capCtx) {
-          // Draw raw (non-mirrored) video for ML — backend doesn't need mirror
-          capCtx.drawImage(video, 0, 0, W, H);
+          // Draw raw (non-mirrored) video for ML — scaled down for speed
+          capCtx.drawImage(video, 0, 0, CAPTURE_W, CAPTURE_H);
           const dataUrl  = cap.toDataURL("image/jpeg", JPEG_QUALITY);
           const frameB64 = dataUrl.slice("data:image/jpeg;base64,".length);
           onFrameRef.current(frameB64);
