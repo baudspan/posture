@@ -26,11 +26,15 @@ class EyeStrainAnalyzer:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             model_path = os.path.join(script_dir, "face_landmarker.task")
         if not os.path.exists(model_path):
-            raise FileNotFoundError(
-                f"face_landmarker.task not found at: {model_path}\n"
-                "Download it from: https://storage.googleapis.com/mediapipe-models/"
+            print(f"face_landmarker.task not found at {model_path}, downloading...")
+            import urllib.request
+            url = (
+                "https://storage.googleapis.com/mediapipe-models/"
                 "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
             )
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            urllib.request.urlretrieve(url, model_path)
+            print("Downloaded face_landmarker.task successfully.")
 
         VisionTaskRunningMode = mp.tasks.vision.RunningMode
         FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
